@@ -1,0 +1,49 @@
+version: '3'
+
+networks:
+  extern:
+    external:
+      name: ${FRONT_NETWORK}
+  intern:
+
+services:
+  pgsql:
+    container_name: ${COMPOSE_PROJECT_NAME}_pgsql
+    image: postgres:11-alpine
+    environment:
+      POSTGRES_PASSWORD: ${ROOT_PASSWORD}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_DB: ${DB_NAME}
+
+  php:
+    container_name: ${COMPOSE_PROJECT_NAME}_php
+    build: .infra/docker/php-fpm
+    depends_on:
+      - pgsql
+    environment:
+      DB_HOST: ${MYSQL_HOST}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${ROOT_PASSWORD}
+    networks:
+      - intern
+
+  nginx:
+    container_name: ${COMPOSE_PROJECT_NAME}_nginx
+    image: nginx:latest
+    links:
+      - php
+    environment:
+      - NGINX_SERVERNAME=${APP_DOMAIN}
+      - NGINX_ROOTSERVER=/var/www/html/public
+    depends_on:
+      - php
+    networks:
+      - extern
+      - intern
+    command: /bin/bash -c "envsubst '$$NGINX_SERVERNAME $$NGINX_ROOTSERVER' < /etc/nginx/conf.d/symfony.template > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"
+    labels:
+      traefik.enable: "true"
+      traefik.port: "80"
+      traefik.frontend.rule: "Host:${APP_DOMAIN}"
+      traefik.docker.network: "${FRONT_NETWORK}"
